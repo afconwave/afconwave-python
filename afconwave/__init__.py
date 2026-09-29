@@ -65,7 +65,7 @@ class Disputes(Resource):
         })
 
 class AfconWave:
-    def __init__(self, secret_key: str, base_url: str = 'https://api.afconwave.com/v1', timeout: int = 30):
+    def __init__(self, secret_key: str, base_url: str = 'https://api.afconwave.com/api/v1', timeout: int = 30):
         self.secret_key = secret_key
         self.base_url = base_url
         self.timeout = timeout
