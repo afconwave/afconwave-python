@@ -1,8 +1,8 @@
+import json
+import time
 import requests
 import hmac
 import hashlib
-
-# ─── Exceptions ────────────────────────────────────────────────────────────────
 
 class AfconWaveError(Exception):
     def __init__(self, message, status_code=None, code=None):
@@ -11,8 +11,6 @@ class AfconWaveError(Exception):
         self.code = code
         super().__init__(self.message)
 
-# ─── Resources ────────────────────────────────────────────────────────────────
-
 class Resource:
     def __init__(self, client):
         self.client = client
@@ -20,17 +18,17 @@ class Resource:
 class Payments(Resource):
     def create(self, **kwargs):
         return self.client.request('POST', '/payments', data=kwargs)
-        
+
     def retrieve(self, payment_id):
         return self.client.request('GET', f'/payments/{payment_id}')
-    
+
     def list(self, **kwargs):
         return self.client.request('GET', '/payments', params=kwargs)
 
 class Payouts(Resource):
     def create(self, **kwargs):
         return self.client.request('POST', '/payouts', data=kwargs)
-        
+
     def retrieve(self, payout_id):
         return self.client.request('GET', f'/payouts/{payout_id}')
 
@@ -66,14 +64,11 @@ class Disputes(Resource):
             'resolutionDetails': resolution_details
         })
 
-# ─── Main Client ───────────────────────────────────────────────────────────────
-
 class AfconWave:
     def __init__(self, secret_key: str, base_url: str = 'https://api.afconwave.com/v1', timeout: int = 30):
         self.secret_key = secret_key
         self.base_url = base_url
         self.timeout = timeout
-        
         self.payments = Payments(self)
         self.payouts = Payouts(self)
         self.crypto = Crypto(self)
@@ -81,43 +76,49 @@ class AfconWave:
         self.disputes = Disputes(self)
 
     @staticmethod
-    def verify_webhook_signature(payload: str, signature: str, secret: str) -> bool:
-        """Verifies that an incoming webhook was sent by AfconWave."""
-        expected = hmac.new(
-            secret.encode(),
-            payload.encode(),
-            hashlib.sha256
-        ).hexdigest()
-        return hmac.compare_digest(expected, signature)
+    def verify_webhook_signature(payload: str, signature: str, secret: str, tolerance: int = 300) -> bool:
+        if not signature or not secret:
+            return False
+        expected = hmac.new(secret.encode(), payload.encode(), hashlib.sha256).hexdigest()
+        if not hmac.compare_digest(expected, signature):
+            return False
+        try:
+            data = json.loads(payload)
+            timestamp = data.get('timestamp') or data.get('created_at') or data.get('createdAt')
+            if timestamp is not None:
+                ts = int(timestamp)
+                webhook_time = ts // 1000 if ts > 10_000_000_000 else ts
+                if abs(time.time() - webhook_time) > tolerance:
+                    return False
+        except (ValueError, TypeError, json.JSONDecodeError):
+            pass
+        return True
 
     def request(self, method: str, path: str, data: dict = None, params: dict = None):
         headers = {
             'Authorization': f'Bearer {self.secret_key}',
             'Content-Type': 'application/json',
-            'Accept': 'application/json'
+            'Accept': 'application/json',
+            'User-Agent': 'AfconWave-Python-SDK/1.1.1',
         }
         url = f"{self.base_url}{path}"
-        
         try:
             response = requests.request(
                 method, url, headers=headers, json=data, params=params, timeout=self.timeout
             )
-            
             res_data = response.json()
-            
             if not response.ok:
                 raise AfconWaveError(
                     message=res_data.get('error', response.reason),
                     status_code=response.status_code,
                     code=res_data.get('code')
                 )
-                
             return res_data.get('data', res_data)
-            
         except requests.exceptions.RequestException as e:
             raise AfconWaveError(message=str(e))
 
-    # ─── Top-level Convenience Methods (Matches README) ─────────────────────
+    def get_balances(self):
+        return self.request('GET', '/balances')
 
     def create_payment(self, **kwargs):
         return self.payments.create(**kwargs)
