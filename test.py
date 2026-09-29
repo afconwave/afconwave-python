@@ -1,7 +1,7 @@
 from afconwave import AfconWave
 
 try:
-    client = AfconWave('sk_test_123')
+    client = AfconWave('afc_sk_test_123')
     print("Python SDK Instantiated Successfully!")
     print("Services loaded: Payments, Payouts, Crypto")
 except Exception as e:
