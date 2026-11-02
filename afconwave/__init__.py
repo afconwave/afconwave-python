@@ -1,133 +1,264 @@
+"""Official AfconWave Python SDK for API v2."""
+
+from __future__ import annotations
+
+import hashlib
+import hmac
 import json
 import time
+from typing import Any, Dict, Optional
+
 import requests
-import hmac
-import hashlib
+
+__version__ = "2.0.0"
+
 
 class AfconWaveError(Exception):
-    def __init__(self, message, status_code=None, code=None):
+    def __init__(self, message: str, status_code: Optional[int] = None, code: Optional[str] = None):
         self.message = message
         self.status_code = status_code
         self.code = code
         super().__init__(self.message)
 
+
+class AuthError(AfconWaveError):
+    def __init__(self, message: str = "Invalid API Key"):
+        super().__init__(message, status_code=401, code="AUTH_ERROR")
+
+
 class Resource:
-    def __init__(self, client):
+    def __init__(self, client: "AfconWave"):
         self.client = client
 
-class Payments(Resource):
-    def create(self, **kwargs):
-        return self.client.request('POST', '/payments', data=kwargs)
 
-    def retrieve(self, payment_id):
-        return self.client.request('GET', f'/payments/{payment_id}')
+class Deposits(Resource):
+    def create(self, **kwargs: Any) -> Dict[str, Any]:
+        return self.client.request("POST", "/deposits", data=kwargs, idempotency_key=kwargs.get("idempotency_key"))
 
-    def list(self, **kwargs):
-        return self.client.request('GET', '/payments', params=kwargs)
+    def retrieve(self, reference: str) -> Dict[str, Any]:
+        return self.client.request("GET", f"/deposits/{reference}")
 
-class Payouts(Resource):
-    def create(self, **kwargs):
-        return self.client.request('POST', '/payouts', data=kwargs)
+    def list(self, **kwargs: Any) -> Dict[str, Any]:
+        return self.client.request("GET", "/deposits", params=kwargs)
 
-    def retrieve(self, payout_id):
-        return self.client.request('GET', f'/payouts/{payout_id}')
+    def sync(self, reference: str) -> Dict[str, Any]:
+        return self.client.request("POST", f"/deposits/{reference}/sync")
 
-class Crypto(Resource):
-    def buy(self, **kwargs):
-        return self.client.request('POST', '/crypto/buy', data=kwargs)
+
+class Withdrawals(Resource):
+    def create(self, **kwargs: Any) -> Dict[str, Any]:
+        return self.client.request("POST", "/withdrawals", data=kwargs, idempotency_key=kwargs.get("idempotency_key"))
+
+    def list(self, **kwargs: Any) -> Dict[str, Any]:
+        return self.client.request("GET", "/withdrawals", params=kwargs)
+
+    def sync(self, reference: str) -> Dict[str, Any]:
+        return self.client.request("POST", f"/withdrawals/{reference}/sync")
+
+    def methods(self, country_code: str) -> Dict[str, Any]:
+        return self.client.request("GET", "/withdrawals/methods", params={"country_code": country_code})
+
+    def nigeria_banks(self) -> Dict[str, Any]:
+        return self.client.request("GET", "/withdrawals/nigeria-banks")
+
+
+class Wallets(Resource):
+    def list(self, **kwargs: Any) -> Dict[str, Any]:
+        return self.client.request("GET", "/wallets", params=kwargs)
+
+    def ensure(self, currency: str, business_id: Optional[str] = None) -> Dict[str, Any]:
+        body: Dict[str, Any] = {"currency": currency}
+        if business_id:
+            body["business_id"] = business_id
+        return self.client.request("POST", "/wallets/ensure", data=body)
+
+    def convert(self, **kwargs: Any) -> Dict[str, Any]:
+        return self.client.request("POST", "/wallets/convert", data=kwargs, idempotency_key=kwargs.get("idempotency_key"))
+
+    def transfer(self, **kwargs: Any) -> Dict[str, Any]:
+        return self.client.request("POST", "/wallets/transfer", data=kwargs, idempotency_key=kwargs.get("idempotency_key"))
+
+    def rates(self) -> Dict[str, Any]:
+        return self.client.request("GET", "/wallets/rates")
+
+
+class Transactions(Resource):
+    def list(self, **kwargs: Any) -> Dict[str, Any]:
+        return self.client.request("GET", "/transactions", params=kwargs)
+
+    def retrieve(self, id_or_ref: str) -> Dict[str, Any]:
+        return self.client.request("GET", f"/transactions/{id_or_ref}")
+
+    def recent(self, limit: int = 4) -> Dict[str, Any]:
+        return self.client.request("GET", "/transactions/recent", params={"limit": limit})
+
 
 class Refunds(Resource):
-    def create(self, payment_id: str, amount: float, reason: str = None):
-        return self.client.request('POST', '/refunds', data={
-            'paymentId': payment_id,
-            'amount': amount,
-            'reason': reason
-        })
+    def create(self, **kwargs: Any) -> Dict[str, Any]:
+        return self.client.request("POST", "/refunds", data=kwargs)
 
-    def list(self):
-        return self.client.request('GET', '/refunds')
+    def list(self) -> Dict[str, Any]:
+        return self.client.request("GET", "/refunds")
+
 
 class Disputes(Resource):
-    def open(self, transaction_id: str, reason: str, description: str):
-        return self.client.request('POST', '/disputes', data={
-            'transactionId': transaction_id,
-            'reason': reason,
-            'description': description
-        })
+    def open(self, **kwargs: Any) -> Dict[str, Any]:
+        return self.client.request("POST", "/disputes", data=kwargs)
 
-    def list(self):
-        return self.client.request('GET', '/disputes')
+    def list(self) -> Dict[str, Any]:
+        return self.client.request("GET", "/disputes")
 
-    def resolve(self, dispute_id: str, resolution: str, resolution_details: str = None):
-        return self.client.request('POST', f'/disputes/{dispute_id}/resolve', data={
-            'resolution': resolution,
-            'resolutionDetails': resolution_details
-        })
+
+class Airtime(Resource):
+    def purchase(self, **kwargs: Any) -> Dict[str, Any]:
+        return self.client.request("POST", "/airtime", data=kwargs)
+
+
+class DataPlans(Resource):
+    def purchase(self, **kwargs: Any) -> Dict[str, Any]:
+        return self.client.request("POST", "/data", data=kwargs)
+
+
+class PaymentLinks(Resource):
+    def create(self, **kwargs: Any) -> Dict[str, Any]:
+        return self.client.request("POST", "/payment-links", data=kwargs)
+
+    def list(self) -> Dict[str, Any]:
+        return self.client.request("GET", "/payment-links")
+
+
+class Rails(Resource):
+    def payout_methods(self, country_code: str) -> Dict[str, Any]:
+        return self.client.request("GET", "/rails/payout-methods", params={"country_code": country_code})
+
 
 class AfconWave:
-    def __init__(self, secret_key: str, base_url: str = 'https://api.afconwave.com/api/v1', timeout: int = 30):
+    """
+    AfconWave API v2 client.
+
+    Auth: X-API-Key with afcw_test_... or afcw_live_...
+    Base: https://api.afconwave.com/v1
+    """
+
+    def __init__(
+        self,
+        secret_key: str,
+        base_url: Optional[str] = None,
+        timeout: int = 30,
+        sandbox: bool = False,
+    ):
+        if not secret_key or not secret_key.startswith("afcw_"):
+            raise AuthError("secret_key must be an afcw_test_... or afcw_live_... key")
+
         self.secret_key = secret_key
-        self.base_url = base_url
         self.timeout = timeout
-        self.payments = Payments(self)
-        self.payouts = Payouts(self)
-        self.crypto = Crypto(self)
+
+        if base_url:
+            self.base_url = base_url.rstrip("/")
+        else:
+            import os
+
+            env_url = os.environ.get("AFCONWAVE_BASE_URL")
+            if env_url:
+                self.base_url = env_url.rstrip("/")
+            elif sandbox:
+                self.base_url = "https://sandbox.api.afconwave.com/v1"
+            else:
+                self.base_url = "https://api.afconwave.com/v1"
+
+        self.deposits = Deposits(self)
+        self.withdrawals = Withdrawals(self)
+        self.wallets = Wallets(self)
+        self.transactions = Transactions(self)
         self.refunds = Refunds(self)
         self.disputes = Disputes(self)
+        self.airtime = Airtime(self)
+        self.data = DataPlans(self)
+        self.payment_links = PaymentLinks(self)
+        self.rails = Rails(self)
+
+        # Back-compat aliases
+        self.payments = self.deposits
+        self.payouts = self.withdrawals
 
     @staticmethod
-    def verify_webhook_signature(payload: str, signature: str, secret: str, tolerance: int = 300) -> bool:
+    def verify_webhook_signature(
+        payload: str,
+        signature: str,
+        secret: str,
+        tolerance: int = 300,
+        timestamp_prefixed: bool = False,
+        timestamp: Optional[str] = None,
+    ) -> bool:
         if not signature or not secret:
             return False
-        expected = hmac.new(secret.encode(), payload.encode(), hashlib.sha256).hexdigest()
+
+        message = f"{timestamp}.{payload}" if timestamp_prefixed and timestamp else payload
+        expected = hmac.new(secret.encode(), message.encode(), hashlib.sha256).hexdigest()
         if not hmac.compare_digest(expected, signature):
             return False
-        try:
-            data = json.loads(payload)
-            timestamp = data.get('timestamp') or data.get('created_at') or data.get('createdAt')
-            if timestamp is not None:
-                ts = int(timestamp)
-                webhook_time = ts // 1000 if ts > 10_000_000_000 else ts
+
+        if timestamp:
+            try:
+                ts = float(timestamp)
+                webhook_time = ts / 1000.0 if ts > 1e12 else ts
                 if abs(time.time() - webhook_time) > tolerance:
                     return False
-        except (ValueError, TypeError, json.JSONDecodeError):
-            pass
+            except (ValueError, TypeError):
+                pass
+
         return True
 
-    def request(self, method: str, path: str, data: dict = None, params: dict = None):
+    def request(
+        self,
+        method: str,
+        path: str,
+        data: Optional[dict] = None,
+        params: Optional[dict] = None,
+        idempotency_key: Optional[str] = None,
+    ) -> Dict[str, Any]:
         headers = {
-            'Authorization': f'Bearer {self.secret_key}',
-            'Content-Type': 'application/json',
-            'Accept': 'application/json',
-            'User-Agent': 'AfconWave-Python-SDK/1.1.1',
+            "X-API-Key": self.secret_key,
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+            "User-Agent": f"AfconWave-Python-SDK/{__version__}",
         }
+        if idempotency_key:
+            headers["Idempotency-Key"] = idempotency_key
+
         url = f"{self.base_url}{path}"
         try:
             response = requests.request(
-                method, url, headers=headers, json=data, params=params, timeout=self.timeout
+                method,
+                url,
+                headers=headers,
+                json=data,
+                params=params,
+                timeout=self.timeout,
             )
-            res_data = response.json()
+            try:
+                res_data = response.json()
+            except ValueError:
+                res_data = {"error": response.text or response.reason}
+
             if not response.ok:
-                raise AfconWaveError(
-                    message=res_data.get('error', response.reason),
-                    status_code=response.status_code,
-                    code=res_data.get('code')
-                )
-            return res_data.get('data', res_data)
+                msg = res_data.get("error") or response.reason
+                if response.status_code == 401:
+                    raise AuthError(msg)
+                raise AfconWaveError(message=msg, status_code=response.status_code, code=res_data.get("code"))
+
+            return res_data
         except requests.exceptions.RequestException as e:
             raise AfconWaveError(message=str(e))
 
-    def get_balances(self):
-        return self.request('GET', '/balances')
+    def get_balances(self, **kwargs: Any) -> Any:
+        res = self.wallets.list(**kwargs)
+        return res.get("wallets", res)
 
-    def create_payment(self, **kwargs):
-        return self.payments.create(**kwargs)
+    def create_payment(self, **kwargs: Any) -> Dict[str, Any]:
+        """Deprecated alias for deposits.create."""
+        return self.deposits.create(**kwargs)
 
-    def retrieve_payment(self, payment_id: str):
-        return self.payments.retrieve(payment_id)
-
-    def list_payments(self, **kwargs):
-        return self.payments.list(**kwargs)
-
-    def create_payout(self, **kwargs):
-        return self.payouts.create(**kwargs)
+    def create_payout(self, **kwargs: Any) -> Dict[str, Any]:
+        """Deprecated alias for withdrawals.create."""
+        return self.withdrawals.create(**kwargs)
